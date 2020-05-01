@@ -4,7 +4,8 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Platform](https://img.shields.io/badge/platform-android-green.svg)](http://developer.android.com/index.html)
-[![API](https://img.shields.io/badge/API-19%2B-brightgreen.svg?style=flat)](https://android-arsenal.com/api?level=19)
+[![API](https://img.shields.io/badge/API-17%2B-brightgreen.svg?style=flat)](https://android-arsenal.com/api?level=17)
+[![Android Arsenal](https://img.shields.io/badge/Android%20Arsenal-Switcher-orange.svg?style=flat)](https://android-arsenal.com/details/1/7460)
 
 Created this cool [switch animation](https://dribbble.com/shots/5429846-Switcher-XLIV) from [Oleg Frolov](https://dribbble.com/Volorf) as an android library. 
 
@@ -19,7 +20,7 @@ Just add Switcher view in your layout XML and Switcher library in your project v
 
 ```gradle
 dependencies {
-  implementation 'com.bitvale:switcher:1.0.0'
+  implementation 'com.bitvale:switcher:1.1.0'
 }
 ```
 
@@ -27,7 +28,7 @@ XML
 -----
 
 ```xml
-<com.bitvale.pacbutton.SwitcherX // or SwitcherC
+<com.bitvale.switcher.SwitcherX // or SwitcherC
     android:id="@+id/switcher"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
@@ -45,6 +46,7 @@ You must use the following properties in your XML to change your Switcher.
 * `app:switcher_on_color`           (color)     -> default  #48ea8b
 * `app:switcher_off_color`          (color)     -> default  #ff4651
 * `app:switcher_icon_color`         (color)     -> default  white
+* `app:elevation`                   (dimension) -> default  4dp
 
 Kotlin
 -----

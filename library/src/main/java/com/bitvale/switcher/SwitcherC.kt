@@ -5,87 +5,43 @@ import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
 import android.annotation.TargetApi
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Outline
-import android.graphics.Paint
-import android.graphics.RectF
 import android.os.Build
-import android.os.Bundle
-import android.os.Parcelable
+import android.renderscript.Allocation
+import android.renderscript.Element
+import android.renderscript.RenderScript
+import android.renderscript.ScriptIntrinsicBlur
 import android.util.AttributeSet
-import android.util.Log
 import android.view.View
 import android.view.ViewOutlineProvider
-import androidx.annotation.ColorInt
 import androidx.core.animation.doOnStart
 import com.bitvale.switcher.commons.*
-
+import kotlin.math.min
 
 /**
  * Created by Alexander Kolpakov on 11/7/2018
  */
 class SwitcherC @JvmOverloads constructor(
-        context: Context,
-        attrs: AttributeSet? = null,
-        defStyleAttr: Int = 0
-) : View(context, attrs, defStyleAttr) {
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : Switcher(context, attrs, defStyleAttr) {
 
     private var switcherRadius = 0f
-    private var iconRadius = 0f
-    private var iconClipRadius = 0f
-    private var iconCollapsedWidth = 0f
-    private var defHeight = 0
-    private var defWidth = 0
-    private var checked = true
 
-    @ColorInt
-    private var onColor = 0
-    @ColorInt
-    private var offColor = 0
-    @ColorInt
-    private var iconColor = 0
-
-    private val switcherRect = RectF(0f, 0f, 0f, 0f)
-    private val switcherPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-    private val iconRect = RectF(0f, 0f, 0f, 0f)
-    private val iconClipRect = RectF(0f, 0f, 0f, 0f)
-    private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-    private val iconClipPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-    private var animatorSet: AnimatorSet? = AnimatorSet()
-
-    private var onClickRadiusOffset = 0f
-        set(value) {
-            field = value
-            switcherRect.left = value
-            switcherRect.top = value
-            switcherRect.right = width.toFloat() - value
-            switcherRect.bottom = height.toFloat() - value
-            invalidate()
-        }
-
-    @ColorInt
-    private var currentColor = 0
-        set(value) {
-            field = value
-            switcherPaint.color = value
-            iconClipPaint.color = value
-        }
-
-    private var switchElevation = 0f
-    private var iconHeight = 0f
-
-    // from rounded rect to circle and back
-    private var iconProgress = 0f
+    override var iconProgress = 0f
         set(value) {
             if (field != value) {
                 field = value
 
                 val iconOffset = lerp(0f, iconRadius - iconCollapsedWidth / 2, value)
-                iconRect.left = switcherRadius - iconCollapsedWidth / 2 - iconOffset
-                iconRect.right = switcherRadius + iconCollapsedWidth / 2 + iconOffset
+                iconRect.left =
+                        (switcherRadius - iconCollapsedWidth / 2 - iconOffset) + shadowOffset
+                iconRect.right =
+                        (switcherRadius + iconCollapsedWidth / 2 + iconOffset) + shadowOffset
 
                 val clipOffset = lerp(0f, iconClipRadius, value)
                 iconClipRect.set(
@@ -98,56 +54,35 @@ class SwitcherC @JvmOverloads constructor(
             }
         }
 
-    init {
-        attrs?.let { retrieveAttributes(attrs, defStyleAttr) }
-        setOnClickListener { animateSwitch() }
-    }
-
-    private fun retrieveAttributes(attrs: AttributeSet, defStyleAttr: Int) {
-        val typedArray = context.obtainStyledAttributes(attrs, R.styleable.Switcher,
-                defStyleAttr, R.style.Switcher)
-
-        switchElevation = typedArray.getDimension(R.styleable.Switcher_android_elevation, 0f)
-
-        onColor = typedArray.getColor(R.styleable.Switcher_switcher_on_color, 0)
-        offColor = typedArray.getColor(R.styleable.Switcher_switcher_off_color, 0)
-        iconColor = typedArray.getColor(R.styleable.Switcher_switcher_icon_color, 0)
-
-        checked = typedArray.getBoolean(R.styleable.Switcher_android_checked, true)
-
-        if (!checked) iconProgress = 1f
-
-        currentColor = if (checked) onColor
-        else offColor
-
-        iconPaint.color = iconColor
-
-        defHeight = typedArray.getDimensionPixelOffset(R.styleable.Switcher_switcher_height, 0)
-        defWidth = typedArray.getDimensionPixelOffset(R.styleable.Switcher_switcher_width, 0)
-
-        typedArray.recycle()
-    }
-
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-
-        val widthMode = View.MeasureSpec.getMode(widthMeasureSpec)
-        var width = View.MeasureSpec.getSize(widthMeasureSpec)
-        val heightMode = View.MeasureSpec.getMode(heightMeasureSpec)
-        var height = View.MeasureSpec.getSize(heightMeasureSpec)
+        val widthMode = MeasureSpec.getMode(widthMeasureSpec)
+        var width = MeasureSpec.getSize(widthMeasureSpec)
+        val heightMode = MeasureSpec.getMode(heightMeasureSpec)
+        var height = MeasureSpec.getSize(heightMeasureSpec)
 
         if (widthMode != MeasureSpec.EXACTLY || heightMode != MeasureSpec.EXACTLY) {
-            val min = Math.min(defWidth.toFloat(), defHeight.toFloat()).toInt()
+            val min = min(defWidth.toFloat(), defHeight.toFloat()).toInt()
             width = min
             height = min
+        }
+
+        if (!isLollipopAndAbove()) {
+            width += switchElevation.toInt() * 2
+            height += switchElevation.toInt() * 2
         }
 
         setMeasuredDimension(width, height)
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
+        if (isLollipopAndAbove()) {
+            outlineProvider = SwitchOutline(w, h)
+            elevation = switchElevation
+        } else {
+            shadowOffset = switchElevation
+        }
 
-        switcherRadius = Math.min(w.toFloat(), h.toFloat()) / 2f
+        switcherRadius = (min(w.toFloat(), h.toFloat()) / 2f) - shadowOffset
 
         iconRadius = switcherRadius * 0.5f
         iconClipRadius = iconRadius / 2.25f
@@ -156,15 +91,17 @@ class SwitcherC @JvmOverloads constructor(
         iconHeight = iconRadius * 2f
 
         iconRect.set(
-                switcherRadius - iconCollapsedWidth / 2f,
-                (switcherRadius * 2f - iconHeight) / 2f,
-                switcherRadius + iconCollapsedWidth / 2f,
-                switcherRadius * 2f - (switcherRadius * 2f - iconHeight) / 2f
+                (switcherRadius - iconCollapsedWidth / 2f) + shadowOffset,
+                ((switcherRadius * 2f - iconHeight) / 2f) + shadowOffset / 2,
+                (switcherRadius + iconCollapsedWidth / 2f) + shadowOffset,
+                (switcherRadius * 2f - (switcherRadius * 2f - iconHeight) / 2f) + shadowOffset / 2
         )
 
-        if (!checked) {
-            iconRect.left = switcherRadius - iconCollapsedWidth / 2f - (iconRadius - iconCollapsedWidth / 2f)
-            iconRect.right = switcherRadius + iconCollapsedWidth / 2f + (iconRadius - iconCollapsedWidth / 2f)
+        if (!isChecked) {
+            iconRect.left =
+                    (switcherRadius - iconCollapsedWidth / 2f - (iconRadius - iconCollapsedWidth / 2f)) + shadowOffset
+            iconRect.right =
+                    (switcherRadius + iconCollapsedWidth / 2f + (iconRadius - iconCollapsedWidth / 2f)) + shadowOffset
 
             iconClipRect.set(
                     iconRect.centerX() - iconClipRadius,
@@ -174,42 +111,73 @@ class SwitcherC @JvmOverloads constructor(
             )
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            outlineProvider = SwitchOutline(w, h)
-            elevation = switchElevation
+        if (!isLollipopAndAbove()) generateShadow()
+    }
+
+    override fun generateShadow() {
+        if (switchElevation == 0f) return
+        if (!isInEditMode) {
+            if (shadow == null) {
+                shadow = Bitmap.createBitmap(width, height, Bitmap.Config.ALPHA_8)
+            } else {
+                shadow?.eraseColor(Color.TRANSPARENT)
+            }
+            val c = Canvas(shadow as Bitmap)
+
+            c.drawCircle(
+                    switcherRadius + shadowOffset, switcherRadius + shadowOffset / 2,
+                    switcherRadius, shadowPaint
+            )
+            val rs = RenderScript.create(context)
+            val blur = ScriptIntrinsicBlur.create(rs, Element.U8(rs))
+            val input = Allocation.createFromBitmap(rs, shadow)
+            val output = Allocation.createTyped(rs, input.type)
+            blur.setRadius(switchElevation)
+            blur.setInput(input)
+            blur.forEach(output)
+            output.copyTo(shadow)
+            input.destroy()
+            output.destroy()
+            blur.destroy()
         }
     }
 
     override fun onDraw(canvas: Canvas?) {
+        // shadow
+        if (!isLollipopAndAbove() && switchElevation > 0f && !isInEditMode) {
+            canvas?.drawBitmap(shadow as Bitmap, 0f, shadowOffset, null)
+        }
+
         // switcher
-        canvas?.drawCircle(switcherRadius, switcherRadius, switcherRadius, switcherPaint)
+        canvas?.drawCircle(
+                switcherRadius + shadowOffset, switcherRadius + shadowOffset / 2,
+                switcherRadius, switcherPaint
+        )
 
         // icon
         canvas?.drawRoundRect(iconRect, switcherRadius, switcherRadius, iconPaint)
-        // don't draw clip path if icon is collapsed state (to prevent drawing small circle
-        // on rounded rect when switch is checked)
+        /* don't draw clip path if icon is collapsed (to prevent drawing small circle
+        on rounded rect when switch is isChecked)*/
         if (iconClipRect.width() > iconCollapsedWidth)
             canvas?.drawRoundRect(iconClipRect, iconRadius, iconRadius, iconClipPaint)
 
     }
 
-    private fun animateSwitch() {
+    override fun animateSwitch() {
         animatorSet?.cancel()
         animatorSet = AnimatorSet()
-
-        onClickRadiusOffset = ON_CLICK_RADIUS_OFFSET
 
         var amplitude = BOUNCE_ANIM_AMPLITUDE_IN
         var frequency = BOUNCE_ANIM_FREQUENCY_IN
         var newProgress = 1f
 
-        if (!checked) {
+        if (isChecked) {
             amplitude = BOUNCE_ANIM_AMPLITUDE_OUT
             frequency = BOUNCE_ANIM_FREQUENCY_OUT
             newProgress = 0f
         }
 
-        val switcherAnimator = ValueAnimator.ofFloat(iconProgress, newProgress).apply {
+        val iconAnimator = ValueAnimator.ofFloat(iconProgress, newProgress).apply {
             addUpdateListener {
                 iconProgress = it.animatedValue as Float
             }
@@ -217,14 +185,12 @@ class SwitcherC @JvmOverloads constructor(
             duration = SWITCHER_ANIMATION_DURATION
         }
 
-        val toColor = if (!checked) onColor else offColor
+        val toColor = if (isChecked) onColor else offColor
 
         iconClipPaint.color = toColor
 
         val colorAnimator = ValueAnimator().apply {
-            addUpdateListener {
-                currentColor = it.animatedValue as Int
-            }
+            addUpdateListener { currentColor = it.animatedValue as Int }
             setIntValues(currentColor, toColor)
             setEvaluator(ArgbEvaluator())
             duration = COLOR_ANIMATION_DURATION
@@ -232,65 +198,53 @@ class SwitcherC @JvmOverloads constructor(
 
         animatorSet?.apply {
             doOnStart {
-                checked = !checked
-                listener?.invoke(checked)
+                listener?.invoke(isChecked)
             }
-            playTogether(switcherAnimator, colorAnimator)
+            playTogether(iconAnimator, colorAnimator)
             start()
         }
     }
 
-    private var listener: ((isChecked: Boolean) -> Unit)? = null
-
-    /**
-     * Register a callback to be invoked when the checked state of this switch
-     * changes.
-     *
-     * @param listener the callback to call on checked state change
-     */
-    fun setOnCheckedChangeListener(listener: (isChecked: Boolean) -> Unit) {
-        this.listener = listener
-    }
-
-    /**
-     * <p>Changes the checked state of this switch.</p>
-     *
-     * @param checked true to check the switch, false to uncheck it
-     */
-    fun setChecked(checked: Boolean) {
-        if (this.checked != checked) {
-            this.checked = checked
-            animateSwitch()
+    override fun setChecked(checked: Boolean, withAnimation: Boolean) {
+        if (this.isChecked != checked) {
+            this.isChecked = checked
+            if (withAnimation && width != 0) {
+                animateSwitch()
+            } else {
+                animatorSet?.cancel()
+                if (!checked) {
+                    currentColor = offColor
+                    iconProgress = 1f
+                } else {
+                    currentColor = onColor
+                    iconProgress = 0f
+                }
+                listener?.invoke(isChecked)
+            }
         }
     }
 
-    override fun onSaveInstanceState(): Parcelable {
-        super.onSaveInstanceState()
-        return Bundle().apply {
-            putBoolean(KEY_CHECKED, checked)
-            putParcelable(STATE, super.onSaveInstanceState())
-        }
-    }
-
-    override fun onRestoreInstanceState(state: Parcelable?) {
-        if (state is Bundle) {
-            super.onRestoreInstanceState(state.getParcelable(STATE))
-            checked = state.getBoolean(KEY_CHECKED)
-            if (!checked) forceCheck()
-        }
-    }
-
-    private fun forceCheck() {
+    override fun forceUncheck() {
         currentColor = offColor
         iconProgress = 1f
     }
 
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-    private inner class SwitchOutline internal constructor(internal var width: Int, internal var height: Int) :
+    private inner class SwitchOutline internal constructor(
+            internal var width: Int,
+            internal var height: Int
+    ) :
             ViewOutlineProvider() {
 
         override fun getOutline(view: View, outline: Outline) {
-            outline.setRoundRect(0, 0, (switcherRadius * 2).toInt(), (switcherRadius * 2).toInt(), switcherRadius)
+            outline.setRoundRect(
+                    0,
+                    0,
+                    (switcherRadius * 2).toInt(),
+                    (switcherRadius * 2).toInt(),
+                    switcherRadius
+            )
         }
     }
+
 }
